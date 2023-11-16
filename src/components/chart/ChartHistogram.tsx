@@ -1,35 +1,23 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useRecoilValue } from 'recoil';
 import { VictoryAxis, VictoryBar, VictoryChart, VictoryLine } from 'victory';
+import { JsonDataAtom, selectColumnAtom } from '../../atom/chart';
 import {
   arrMinMax,
-  getAvgAndVariance,
+  meanAndStdDev,
   getBinWidthArray,
   normalDistribution,
 } from '../../utils/distribution';
+import { cuttingDigits } from '../../utils/utils';
+import { ChartAreaProps, ChartType, binType } from './type/ChartType';
 
-interface VictoryHistogramType {
-  className: string;
-}
-
-interface ChartType {
-  x: number | string;
-  y: number;
-}
-
-interface binType {
-  value: number;
-  index: number;
-}
-
-const ChartHistogram = ({ className }: VictoryHistogramType) => {
+const ChartHistogram = ({ className }: ChartAreaProps) => {
+  const jsonData = useRecoilValue(JsonDataAtom);
+  const selectColumn = useRecoilValue(selectColumnAtom);
   const [binList, setBinList] = useState<number[]>([]); // 빈리스트
   const [bin, setBin] = useState<binType>({ value: 0, index: 0 }); // 선택한 빈값
-  const [columnList, setColumnList] = useState<string[]>([]);
   const [minMax, setMinMax] = useState({ min: 0, max: 0 });
-  const [avgAndVar, setAvgAndVar] = useState({ mean: 0, variance: 0 });
-  const [selectColumn, setSelectColumn] = useState(''); // 선택한 컬럼
-  const [jsonData, setJsonData] = useState([]); // DB요청으로 받아온 데이터
+  const [avgAndVar, setAvgAndVar] = useState({ mean: 0, std_dev: 0 });
   const [barData, setBarData] = useState<ChartType[]>([]); // histogram 그리기용 데이터
   const [lineData, setLineData] = useState<ChartType[]>([]); // 표준 정규 분포 그리기용 데이터
 
@@ -37,33 +25,6 @@ const ChartHistogram = ({ className }: VictoryHistogramType) => {
     const { value, selectedIndex } = e.target;
     setBin({ value: +value, index: selectedIndex });
   };
-
-  const columnChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { value } = e.target;
-    setSelectColumn(value);
-  };
-
-  useEffect(() => {
-    const id = '6549d993b3d5a954733431af'; // iris
-    const url = `http://192.168.0.36:8080/files/${id}`;
-    axios.post(url).then((res) => {
-      const arr = JSON.parse(res?.data?.dataframe);
-      // Unnamed값 지우기
-      const filterArr = arr.map((item: any) => {
-        return Object.fromEntries(
-          Object.entries(item).filter(([key]) => !['Unnamed: 0'].includes(key)),
-        );
-      });
-
-      if (filterArr && filterArr.length > 0) {
-        setJsonData(filterArr);
-        setColumnList(Object.keys(filterArr[0]));
-        setSelectColumn(Object.keys(filterArr[0])[0]);
-      } else {
-        alert('데이터를 불러오지 못했습니다.');
-      }
-    });
-  }, []);
 
   useEffect(() => {
     if (jsonData && jsonData.length > 0 && selectColumn) {
@@ -96,7 +57,7 @@ const ChartHistogram = ({ className }: VictoryHistogramType) => {
     let maxCnt = 0;
     let minCnt = 0;
 
-    columnList.forEach((_) => {
+    columnList.forEach(() => {
       const cnt = selectArr.filter(
         (x) => start <= x && x <= start + sepValue,
       ).length;
@@ -110,25 +71,23 @@ const ChartHistogram = ({ className }: VictoryHistogramType) => {
     });
     setBarData(drawHistogramData); // histogram용
 
-    const drawAvg =
-      drawHistogramData.reduce((a, c) => a + c.y, 0) / drawHistogramData.length;
-    console.log(max, min);
-    console.log(maxCnt, minCnt);
-
     // 여기서부터 표준 정규 분포 그리기 시작
-    const { mean, variance } = getAvgAndVariance(selectArr);
-    setAvgAndVar({ mean, variance });
+    const { mean, std_dev } = meanAndStdDev(selectArr);
+    setAvgAndVar({ mean, std_dev });
 
     const arrRange = Math.floor(max - min) < 4 ? 4 : Math.floor(max - min);
     const lineArr = Array(arrRange)
       .fill(Math.floor(min) - 1)
-      // .fill(0)
       .map((n, i: number) => ({
         x: n + i,
-        y: normalDistribution(n + i, mean, variance),
+        y: normalDistribution(n + i, mean, std_dev),
       }));
+
+    // 정규 분포 배열 값중에 가장 큰값을 찾는다.
     const lineMax = Math.max(...lineArr.map((x) => x.y));
-    const scaleRate = maxCnt / lineMax;
+    const scaleRate = maxCnt / lineMax; // 히스토그램의 최대 카운팅값과의 비율을 찾는다
+
+    // 비율로 전체값을 다시 재처리 후 라인을 그려준다
     const resultArr = lineArr.map((x) => ({
       ...x,
       y: x.y * scaleRate,
@@ -138,31 +97,32 @@ const ChartHistogram = ({ className }: VictoryHistogramType) => {
 
   return (
     <div className={className}>
-      <div className="option">
-        <select onChange={columnChange}>
-          {columnList.map((column) => (
-            <option key={column} value={column}>
-              {column}
-            </option>
-          ))}
-        </select>
-        <select onChange={binChange} value={bin.value}>
-          {binList.map((bin) => (
-            <option key={bin} value={bin}>
-              {bin}
-            </option>
-          ))}
-        </select>
-        <span>평균값: {avgAndVar.mean}</span>
-        <span>분산값(σ): {avgAndVar.variance}</span>
-      </div>
+      <ul className="option_area">
+        <li className="bold">Histogram</li>
+        <li>
+          <span>Bin: </span>
+          <select onChange={binChange} value={bin.value}>
+            {binList.map((bin) => (
+              <option key={bin} value={bin}>
+                {bin}
+              </option>
+            ))}
+          </select>
+        </li>
+        <li>
+          <span>평균값: {cuttingDigits(avgAndVar.mean, 3)}</span>
+        </li>
+        <li>
+          <span>분산값(σ): {cuttingDigits(avgAndVar.std_dev, 3)}</span>
+        </li>
+      </ul>
       <div className="chart">
         {barData && lineData && (
           // <VictoryChart domainPadding={{ x: 100 }}>
           <VictoryChart>
             <VictoryAxis
               style={{
-                tickLabels: { fontSize: 6 }, // X축 눈금 레이블 폰트 크기
+                tickLabels: { fontSize: 8 }, // X축 눈금 레이블 폰트 크기
               }}
             />
 
@@ -170,14 +130,13 @@ const ChartHistogram = ({ className }: VictoryHistogramType) => {
             <VictoryAxis
               dependentAxis
               style={{
-                tickLabels: { fontSize: 6 }, // Y축 눈금 레이블 폰트 크기
+                tickLabels: { fontSize: 8 }, // Y축 눈금 레이블 폰트 크기
               }}
             />
 
             <VictoryBar
-              width={200}
               style={{
-                data: { fill: '#67b7dc', strokeWidth: 1, fontSize: 8 },
+                data: { fill: '#67b7dc', strokeWidth: 0, fontSize: 8 },
               }}
               data={barData}
             />

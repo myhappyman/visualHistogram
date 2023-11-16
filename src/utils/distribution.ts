@@ -1,15 +1,3 @@
-export function getAvgAndVariance(arr: number[]) {
-  const mean = calculateMean(arr);
-  const variance = Math.sqrt(calculateVariance(arr, mean));
-  return { mean, variance };
-}
-
-// export function normalDistribution(x: number, mean: number, variance: number) {
-//   const exponent = -((x - mean) ** 2) / (2 * variance);
-//   const coefficient = 1 / (Math.sqrt(2 * Math.PI) * Math.sqrt(variance));
-//   return coefficient * Math.exp(exponent);
-// }
-
 /**
  * 정규분포를 따르는 데이터 생성
  * @param x
@@ -22,6 +10,12 @@ export function normalDistribution(x: number, mean: number, std_dev: number) {
     (1 / (std_dev * Math.sqrt(2 * Math.PI))) *
     Math.exp(-0.5 * ((x - mean) / std_dev) ** 2)
   );
+}
+
+export function meanAndStdDev(arr: number[]) {
+  const mean = calculateMean(arr);
+  const std_dev = Math.sqrt(calculateVariance(arr, mean));
+  return { mean, std_dev };
 }
 
 const calculateMean = (arr: number[]) => {
@@ -68,11 +62,11 @@ function getNumberFloor(num: number): number {
   return Math.floor(num / 5) * 5;
 }
 
-export function arrMinMax(array: any[], key?: string) {
-  let keyArr = array;
-  if (key) {
-    keyArr = array.map((x) => x[key]);
-  }
+interface ArrayType {
+  [key: string]: number;
+}
+export function arrMinMax(array: ArrayType[], key: string) {
+  const keyArr = array.map((x) => x[key]);
   const min = Math.min(...keyArr);
   const max = Math.max(...keyArr);
   return { min, max };
